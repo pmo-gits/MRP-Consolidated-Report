@@ -1,0 +1,55 @@
+function consolidateMRPReqSheet() {
+  var destinationSheet = SpreadsheetApp.openById(MRP_DESTINATION_SHEET_ID).getSheetByName(MRP_DESTINATION_SHEET_NAME);
+
+  // Get destination headers
+  var destinationHeaders = destinationSheet.getRange(1, 1, 1, destinationSheet.getLastColumn()).getValues()[0];
+
+  // Clear old data (below header only)
+  if (destinationSheet.getLastRow() > 1) {
+    destinationSheet.getRange(2, 1, destinationSheet.getLastRow() - 1, destinationHeaders.length).clearContent();
+  }
+
+  var allRowsToAppend = [];
+
+  var files = DriveApp.getFolderById(MRP_SOURCE_FOLDER_ID).getFiles();
+
+  while (files.hasNext()) {
+    var file = files.next();
+    if (file.getMimeType() !== MimeType.GOOGLE_SHEETS) continue;
+
+    try {
+      var spreadsheet = SpreadsheetApp.openById(file.getId());
+      var mrpReqSheet = spreadsheet.getSheetByName(MRP_SOURCE_TAB_NAME);
+      if (!mrpReqSheet) continue;
+
+      var data = mrpReqSheet.getDataRange().getValues();
+      if (data.length < 2) continue;
+
+      var sourceHeaders = data[0];
+      var matchedIndexes = destinationHeaders.map(h => sourceHeaders.indexOf(h));
+
+      var fileCreated = file.getDateCreated();
+
+      for (var r = 1; r < data.length; r++) {
+        var row = data[r];
+        var filteredRow = matchedIndexes.map(i => i !== -1 ? row[i] : "");
+        filteredRow.push(fileCreated); // Add timestamp at the end
+        allRowsToAppend.push(filteredRow);
+      }
+    } catch (e) {
+      Logger.log("Error in file: " + file.getName() + " - " + e.message);
+      continue;
+    }
+  }
+
+  // Sort rows by timestamp (last column)
+  allRowsToAppend.sort((a, b) => new Date(a[a.length - 1]) - new Date(b[b.length - 1]));
+
+  // Remove timestamp column before writing (optional)
+  allRowsToAppend = allRowsToAppend.map(row => row.slice(0, -1));
+
+  // Write to sheet
+  if (allRowsToAppend.length > 0) {
+    destinationSheet.getRange(2, 1, allRowsToAppend.length, destinationHeaders.length).setValues(allRowsToAppend);
+  }
+}
