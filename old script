@@ -1,0 +1,57 @@
+function consolidateMRPReqSheet() {
+  // Source folder ID
+  var sourceFolderId = "1iWmVMONbJGEGDV8ONyN25-nzN9smCfSW";
+
+  // Destination Sheet details
+  var destinationSheetId = "1kSP9-hkdKhaFTeYJWKyMeBtHWqMQpAYMF1maL32uqB4";
+  var destinationSheetName = "Consolidated MRP REQ";
+
+  // Open destination sheet
+  var destinationSheet = SpreadsheetApp.openById(destinationSheetId).getSheetByName(destinationSheetName);
+
+  // Step 1: Get and store headers from Row 1
+  var destinationHeaders = destinationSheet.getRange(1, 1, 1, destinationSheet.getLastColumn()).getValues()[0];
+
+  // Step 2: Clear everything below the header (starting from Row 2)
+  if (destinationSheet.getLastRow() > 1) {
+    destinationSheet.getRange(2, 1, destinationSheet.getLastRow() - 1, destinationHeaders.length).clearContent();
+  }
+
+  // Step 3: Start consolidating data
+  var allRowsToAppend = [];
+
+  var files = DriveApp.getFolderById(sourceFolderId).getFiles();
+
+  while (files.hasNext()) {
+    var file = files.next();
+
+    // Only process Google Sheets
+    if (file.getMimeType() !== MimeType.GOOGLE_SHEETS) continue;
+
+    try {
+      var spreadsheet = SpreadsheetApp.openById(file.getId());
+      var mrpReqSheet = spreadsheet.getSheetByName("MRP REQ");
+      if (!mrpReqSheet) continue;
+
+      var data = mrpReqSheet.getDataRange().getValues();
+      if (data.length < 2) continue;
+
+      var sourceHeaders = data[0];
+      var matchedIndexes = destinationHeaders.map(h => sourceHeaders.indexOf(h));
+
+      for (var r = 1; r < data.length; r++) {
+        var row = data[r];
+        var filteredRow = matchedIndexes.map(i => i !== -1 ? row[i] : "");
+        allRowsToAppend.push(filteredRow);
+      }
+    } catch (e) {
+      Logger.log("Error in file: " + file.getName() + " - " + e.message);
+      continue;
+    }
+  }
+
+  // Write all matched data below header
+  if (allRowsToAppend.length > 0) {
+    destinationSheet.getRange(2, 1, allRowsToAppend.length, destinationHeaders.length).setValues(allRowsToAppend);
+  }
+}
